@@ -98,6 +98,8 @@ Use ids from the selected message's own metadata. Binary responses over 1 MiB ar
 
 Draft content is the string `body.body`. Do not use `html` or `text` for drafts. Recipient is the authenticated `From` address only.
 
+Follow the source-bound write/reconciliation rules in [workflows.md](workflows.md). When exposed by the live schema, a stable top-level `idempotencyKey` is reused only for the identical method/path/query/body and exact source intent. An uncertain write or key conflict requires state reconciliation, not a retry with a fresh key. Retain the returned draft id with the exact source email id; supplier or thread similarity is not enough to prove a prior draft matches.
+
 ```json
 {
   "mailboxId": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",

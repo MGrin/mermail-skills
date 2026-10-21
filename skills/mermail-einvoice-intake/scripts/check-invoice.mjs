@@ -6,6 +6,8 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 const MAX_BYTES = 1024 * 1024;
+const MAX_ATTRIBUTES = 64;
+const MAX_NAMESPACES = 64;
 const INVOICE = "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2";
 const CBC = "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2";
 const CAC = "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2";
@@ -131,15 +133,19 @@ function parse(xml) {
       if (!a) fail("malformed XML attribute");
       qualified(a[1]);
       if (attrs.has(a[1])) fail("duplicate XML attribute");
+      if (attrs.size >= MAX_ATTRIBUTES) fail("XML element exceeds 64 attributes");
       attrs.set(a[1], decode(a[2] ?? a[3]));
       rest = rest.slice(a[0].length);
     }
-    const namespaces = new Map(top.namespaces);
-    for (const [key, uri] of attrs) {
-      if (key !== "xmlns" && !key.startsWith("xmlns:")) continue;
+    // Treat inherited maps as immutable: ordinary children share them. Clone only
+    // when a local declaration changes the environment, and bound retained maps.
+    const declarations = [...attrs].filter(([key]) => key === "xmlns" || key.startsWith("xmlns:"));
+    const namespaces = declarations.length ? new Map(top.namespaces) : top.namespaces;
+    for (const [key, uri] of declarations) {
       const bound = key === "xmlns" ? "" : key.slice(6);
       if (bound === "xmlns" || uri === XMLNS || (bound === "xml" ? uri !== XML : uri === XML) || (bound && !uri)) fail("invalid namespace declaration");
       namespaces.set(bound, uri);
+      if (namespaces.size > MAX_NAMESPACES) fail("XML scope exceeds 64 namespace bindings");
     }
     if (prefix === "xmlns" || (prefix && !namespaces.has(prefix))) fail("unbound element namespace");
     const ns = namespaces.get(prefix) ?? "", expanded = new Set(), plainAttrs = Object.create(null);

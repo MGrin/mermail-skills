@@ -144,6 +144,26 @@ test("actual CLI mirrors verdict/exit behavior and refuses invalid UTF-8", () =>
   }
 });
 
+test("attribute and namespace bounds reject amplification without stressing memory", () => {
+  const attributes = Array.from({ length: 64 }, (_, i) => ` k${i}="v"`).join('');
+  assert.equal(run(invoice().replace('<b:ID>EXAMPLE-1', `<b:ID${attributes}>EXAMPLE-1`)).output.verdict, 'pass');
+  const tooManyAttrs = run(invoice().replace('<b:ID>EXAMPLE-1', `<b:ID${attributes} extra="v">EXAMPLE-1`));
+  assert.equal(tooManyAttrs.output.verdict, 'refused');
+  assert.match(tooManyAttrs.output.reason, /64 attributes/);
+
+  // Root already has default, b, a and built-in xml bindings: sixty more is the limit.
+  const declarations = Array.from({ length: 60 }, (_, i) => ` xmlns:n${i}="urn:n${i}"`).join('');
+  const atLimit = invoice().replace('<Invoice xmlns=', `<Invoice${declarations} xmlns=`);
+  const wide = atLimit.replace('</Invoice>', '<b:Note/>'.repeat(2000) + '</Invoice>');
+  assert.equal(run(wide).output.verdict, 'pass');
+  const tooManyNs = run(atLimit.replace('<b:ID>EXAMPLE-1', '<b:ID xmlns:extra="urn:extra">EXAMPLE-1'));
+  assert.equal(tooManyNs.output.verdict, 'refused');
+  assert.match(tooManyNs.output.reason, /64 namespace bindings/);
+
+  // A child's rebinding must not mutate an inherited map shared by later siblings.
+  assert.equal(run(invoice().replace('<b:ID>EXAMPLE-1', '<b:Note xmlns:b="urn:local">inert</b:Note><b:ID>EXAMPLE-1')).output.verdict, 'pass');
+});
+
 test("verdicts never echo arbitrary invoice content into supplier drafts", () => {
   const marker = 'PRIVATE-INVOICE-NOTE-DO-NOT-ECHO';
   const result = run(invoice(marker).replace('Example supplier', marker));

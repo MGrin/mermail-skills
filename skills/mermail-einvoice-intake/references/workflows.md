@@ -16,7 +16,7 @@
 | Verdict | Sender authentication | Actions | Status |
 | --- | --- | --- | --- |
 | `pass` | any | `move_email` to `e-invoices-accepted` | `accepted` |
-| `fail` | `pass` | `save_draft` to `From`, then `move_email` to `e-invoices-review` | `rejection-drafted` |
+| `fail` | `pass` | Reconcile any source-bound prior draft first; `save_draft` to `From`, then `move_email` to `e-invoices-review` only after confirmed draft success | `rejection-drafted` when both writes are confirmed |
 | `fail` | not `pass` | `move_email` to `e-invoices-review` | `needs-human` |
 | `unsupported` / `refused` | any | `move_email` to `e-invoices-review` | `needs-human` |
 
@@ -50,4 +50,8 @@ Only when the user asks. Show each draft's exact recipient and body, get approva
 
 ## Re-runs
 
-Messages already moved out of the inbox are not listed again, so a second run does not draft twice. If the user points the run at the review folder, check for an existing draft to that supplier before saving another.
+`save_draft` and `move_email` are separate writes, not an atomic transaction. A successful draft followed by a failed move can leave the source in the inbox. Never infer that an inbox message has no draft, or that a supplier/thread match proves the draft belongs to this invoice.
+
+Keep source-bound evidence in the current conversation: mailbox id, source email id, attachment id, checker version/findings, exact draft payload, returned draft id and confirmed move result. Preserve source thread metadata when supported, but a thread alone can contain several invoices. Use a stable top-level `idempotencyKey` for each exact write intent when the live schema supports it, bound to this source and the immutable operation/payload; retain the key and exact request, and never reuse it for changed content or change it to bypass a conflict. A key is not a durable exactly-once guarantee.
+
+Before a rerun drafts again (in inbox or review), check the recorded draft id with one bounded metadata/state read, or reconcile bounded draft evidence explicitly linked to that exact source. Reuse a confirmed existing draft rather than making another. If a draft or move result is uncertain, stop dependent writes, do one bounded authoritative state check, and report the partial outcome. If exact source-to-draft evidence is missing or conflicting, ask the user to reconcile it; do not create another draft based only on supplier, date, or thread. These conversation records are not a persistent ledger across sessions.

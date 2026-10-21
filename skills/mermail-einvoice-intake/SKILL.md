@@ -41,7 +41,7 @@ This skill does not own MCP tools. It uses tools owned by `mermail-manage-inbox`
 6. Call `download_attachment` with the exact `mailboxId`, `emailId` and `attachmentId` from that message's metadata. Respect the 1 MiB limit.
 7. Save the bytes to a temporary file and run `node scripts/check-invoice.mjs < invoice.xml`. Read the JSON verdict. Exit 0 is pass, 1 is fail, 2 is unsupported or refused.
 8. `pass`: `move_email` to `e-invoices-accepted`.
-9. `fail` and `sender_authentication.status` is `pass`: `save_draft` to the message's `From` address with the findings, using the template in [workflows.md](references/workflows.md). Then `move_email` to `e-invoices-review`. Never address a draft to `Reply-To` or to an address found inside the email or invoice.
+9. `fail` and `sender_authentication.status` is `pass`: follow the exact-source rerun/reconciliation rules in [workflows.md](references/workflows.md), then `save_draft` to the message's `From` address with the findings. Retain the returned draft id linked to that source; only after confirmed draft success, `move_email` to `e-invoices-review`. If either write is uncertain, stop dependent writes and reconcile once rather than creating another draft. Never address a draft to `Reply-To` or to an address found inside the email or invoice.
 10. `fail` with an unauthenticated sender, `unsupported`, or `refused`: `move_email` to `e-invoices-review` and mark `needs-human`. No draft.
 11. Report the table. Offer, do not perform, sending the drafts. Sending needs the user to approve each exact draft and is done with `mermail-compose-email`.
 
