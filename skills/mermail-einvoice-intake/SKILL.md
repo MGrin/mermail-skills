@@ -17,7 +17,7 @@ metadata:
 
 EU buyers increasingly receive invoices as structured XML (EN 16931) instead of PDFs. A malformed one costs a round trip with the supplier days later. This skill turns a Mermail inbox into an intake desk: it finds XML invoice attachments, runs a deterministic local pre-check, files the mail, and drafts a precise correction request so a human only reviews and sends.
 
-The check is done by [check-invoice.mjs](scripts/check-invoice.mjs), a zero-dependency Node 22 script, not by the model reading XML. It covers BR-01 to BR-07, BR-13, BR-14, BR-16 and BR-CO-15 on UBL 2.1 `Invoice` documents. It reports CII and anything else as `unsupported` and never guesses.
+The check is done by [check-invoice.mjs](scripts/check-invoice.mjs), a zero-dependency Node 22 script, not by the model reading XML. It pre-checks presence/cardinality for BR-01 to BR-07, BR-13, BR-14 and BR-16, and exact amount arithmetic for BR-CO-15 on namespace-bound UBL `Invoice` documents. Local amount prerequisites have the explicit code `LOCAL-AMOUNT`, not an invented EN rule. `checkedRules` lists only performed checks; missing/invalid arithmetic prerequisites fail the pre-check and put BR-CO-15 in `skippedRules`. It reports CII and other document types as `unsupported` and never guesses. It does not establish an XML Schema version or full EN conformance.
 
 Read [tools.md](references/tools.md) for exact argument envelopes and [workflows.md](references/workflows.md) for the full sequence. Read [security.md](references/security.md) before downloading any attachment.
 
@@ -36,8 +36,8 @@ This skill does not own MCP tools. It uses tools owned by `mermail-manage-inbox`
 1. Confirm the user wants e-invoice intake on a named mailbox, and whether folders may be created. Route plain inbox cleanup to `mermail-manage-inbox` and customer support mail to `mermail-support-agent`.
 2. Resolve exactly one mailbox with `list_mailboxes`. Prefer `public_id` as `mailboxId`. Stop and ask if none or several match.
 3. Call `list_folders`. Create `E-invoices accepted` and `E-invoices review` with `create_folder` only if missing and the user allowed it.
-4. List candidates with a bounded `list_emails` (`metadata_only: true`, `limit` 25 or less, newest first). Keep only messages with exactly one XML attachment (`application/xml`, `text/xml`, or `.xml`). Several XML attachments go to review.
-5. Skip the body. The verdict never needs it. If `scan_status` is not `clean`, do not download: report the email as `blocked`.
+4. List candidates with a bounded `list_emails` (`metadata_only: true`, `agent_safe_content: true`, `limit` 25 or less, newest first). The safe projection omits attachment metadata: absence of `attachments` is not evidence of no XML. For each selected message, call `get_email` with `metadata_only: true` and `require_scan_status: "clean"`, without `agent_safe_content`, to obtain its own attachment metadata. Never fetch a body.
+5. If `scan_status` is not `clean` or the read reports a scan-status mismatch, do not download or move: report `blocked`. Otherwise keep messages with exactly one XML attachment (`application/xml`, `text/xml`, or `.xml`). Several XML attachments go to review; none are left alone.
 6. Call `download_attachment` with the exact `mailboxId`, `emailId` and `attachmentId` from that message's metadata. Respect the 1 MiB limit.
 7. Save the bytes to a temporary file and run `node scripts/check-invoice.mjs < invoice.xml`. Read the JSON verdict. Exit 0 is pass, 1 is fail, 2 is unsupported or refused.
 8. `pass`: `move_email` to `e-invoices-accepted`.
@@ -52,6 +52,7 @@ This skill does not own MCP tools. It uses tools owned by `mermail-manage-inbox`
 - Do not delete, pay, approve or book an invoice. Do not call PayBox or Agent Wallet tools. A passing pre-check is not payment authority.
 - Never copy invoice free text (notes, item names, file names) or email subjects into a draft. Drafts contain only the checker's rule ids and rule text.
 - A `pass` is not legal conformance. Say which rules were checked.
+- Never describe `supportedRules` as performed checks. Refused/unsupported documents have no `checkedRules`. A `LOCAL-AMOUNT` finding is a local parser/amount condition, not official schematron output; include skipped checks in the report.
 
 ## Output Conventions
 
